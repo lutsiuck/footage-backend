@@ -1,0 +1,242 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TeamMemberRole {
+  player
+  captain
+}
+
+enum MembershipStatus {
+  pending
+  approved
+}
+
+enum TournamentType {
+  league
+  knockout
+  group_knockout
+}
+
+enum TournamentStatus {
+  draft
+  active
+  finished
+}
+
+enum MatchStatus {
+  scheduled
+  finished
+}
+
+enum MatchEventType {
+  goal
+  assist
+  yellow_card
+  red_card
+}
+
+enum VideoType {
+  goal
+  highlight
+  other
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  password     String
+  name         String
+  avatar_url   String?
+  city         String?
+  is_player    Boolean  @default(false)
+  is_organizer Boolean  @default(false)
+  created_at   DateTime @default(now())
+
+  player_profile      PlayerProfile?
+  teams_created       Team[]         @relation("TeamsCreated")
+  tournaments_created Tournament[]   @relation("TournamentsCreated")
+  team_members        TeamMember[]
+  videos              Video[]
+  likes               Like[]
+  comments            Comment[]
+  follows_given       Follow[]       @relation("FollowFollower")
+  follows_received    Follow[]       @relation("FollowFollowing")
+  match_events        MatchEvent[]
+
+  @@map("users")
+}
+
+model Follow {
+  id           String   @id @default(uuid()) @db.Uuid
+  follower_id  String   @db.Uuid
+  following_id String   @db.Uuid
+  created_at   DateTime @default(now())
+
+  follower  User @relation("FollowFollower", fields: [follower_id], references: [id], onDelete: Cascade)
+  following User @relation("FollowFollowing", fields: [following_id], references: [id], onDelete: Cascade)
+
+  @@unique([follower_id, following_id])
+  @@map("follows")
+}
+
+model PlayerProfile {
+  id       String  @id @default(uuid()) @db.Uuid
+  user_id  String  @unique @db.Uuid
+  position String?
+  height   Int?
+  weight   Int?
+  rating   Float?
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("player_profiles")
+}
+
+model Team {
+  id         String   @id @default(uuid()) @db.Uuid
+  name       String
+  logo_url   String?
+  city       String?
+  created_by String   @db.Uuid
+  created_at DateTime @default(now())
+
+  creator          User             @relation("TeamsCreated", fields: [created_by], references: [id], onDelete: Cascade)
+  team_members     TeamMember[]
+  tournament_teams TournamentTeam[]
+  home_matches     Match[]          @relation("HomeTeam")
+  away_matches     Match[]          @relation("AwayTeam")
+
+  @@map("teams")
+}
+
+model TeamMember {
+  id        String           @id @default(uuid()) @db.Uuid
+  team_id   String           @db.Uuid
+  user_id   String           @db.Uuid
+  role      TeamMemberRole
+  status    MembershipStatus
+  joined_at DateTime         @default(now())
+
+  team Team @relation(fields: [team_id], references: [id], onDelete: Cascade)
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([team_id, user_id])
+  @@map("team_members")
+}
+
+model Tournament {
+  id         String           @id @default(uuid()) @db.Uuid
+  name       String
+  type       TournamentType
+  city       String?
+  start_date DateTime?        @db.Date
+  end_date   DateTime?        @db.Date
+  created_by String           @db.Uuid
+  status     TournamentStatus
+
+  creator          User             @relation("TournamentsCreated", fields: [created_by], references: [id], onDelete: Cascade)
+  tournament_teams TournamentTeam[]
+  matches          Match[]
+
+  @@index([city])
+  @@index([status])
+  @@map("tournaments")
+}
+
+model TournamentTeam {
+  id            String           @id @default(uuid()) @db.Uuid
+  tournament_id String           @db.Uuid
+  team_id       String           @db.Uuid
+  status        MembershipStatus
+
+  tournament Tournament @relation(fields: [tournament_id], references: [id], onDelete: Cascade)
+  team       Team       @relation(fields: [team_id], references: [id], onDelete: Cascade)
+
+  @@unique([tournament_id, team_id])
+  @@map("tournament_teams")
+}
+
+model Match {
+  id            String      @id @default(uuid()) @db.Uuid
+  tournament_id String      @db.Uuid
+  home_team_id  String      @db.Uuid
+  away_team_id  String      @db.Uuid
+  match_date    DateTime
+  status        MatchStatus
+  home_score    Int         @default(0)
+  away_score    Int         @default(0)
+
+  tournament   Tournament   @relation(fields: [tournament_id], references: [id], onDelete: Cascade)
+  home_team    Team         @relation("HomeTeam", fields: [home_team_id], references: [id], onDelete: Cascade)
+  away_team    Team         @relation("AwayTeam", fields: [away_team_id], references: [id], onDelete: Cascade)
+  match_events MatchEvent[]
+  videos       Video[]
+
+  @@index([tournament_id])
+  @@index([match_date])
+  @@map("matches")
+}
+
+model MatchEvent {
+  id        String         @id @default(uuid()) @db.Uuid
+  match_id  String         @db.Uuid
+  player_id String         @db.Uuid
+  type      MatchEventType
+  minute    Int
+
+  match  Match @relation(fields: [match_id], references: [id], onDelete: Cascade)
+  player User  @relation(fields: [player_id], references: [id], onDelete: Cascade)
+
+  @@index([match_id])
+  @@map("match_events")
+}
+
+model Video {
+  id            String    @id @default(uuid()) @db.Uuid
+  user_id       String    @db.Uuid
+  match_id      String    @db.Uuid
+  video_url     String
+  thumbnail_url String?
+  type          VideoType
+  created_at    DateTime  @default(now())
+
+  user     User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  match    Match     @relation(fields: [match_id], references: [id], onDelete: Cascade)
+  likes    Like[]
+  comments Comment[]
+
+  @@index([match_id])
+  @@index([created_at])
+  @@map("videos")
+}
+
+model Like {
+  id         String   @id @default(uuid()) @db.Uuid
+  user_id    String   @db.Uuid
+  video_id   String   @db.Uuid
+  created_at DateTime @default(now())
+
+  user  User  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  video Video @relation(fields: [video_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, video_id])
+  @@map("likes")
+}
+
+model Comment {
+  id         String   @id @default(uuid()) @db.Uuid
+  user_id    String   @db.Uuid
+  video_id   String   @db.Uuid
+  text       String
+  created_at DateTime @default(now())
+
+  user  User  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  video Video @relation(fields: [video_id], references: [id], onDelete: Cascade)
+
+  @@map("comments")
+}
