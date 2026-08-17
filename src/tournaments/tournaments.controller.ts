@@ -62,6 +62,7 @@ export class TournamentsController {
   }
 
   @Get(':id')
+  @Authorization()
   getTournamentDetails(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthorizedRequest) {
     return this.tournamentsService.getTournamentDetails(id, req.user?.id);
   }
