@@ -62,7 +62,7 @@ export class TournamentsService {
     });
 
     return {
-      tournament,
+      ...tournament,
       teams: teams.map((item) => ({ id: item.team.id, name: item.team.name, logo: item.team.logo_url, status: item.status })),
     };
   }
