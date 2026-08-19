@@ -44,10 +44,10 @@ export class TeamsService {
   }
 
   async getTeams(query: TeamsQuery) {
-    const { search, city, limit = 20, offset = 0 } = query;
+    const { name, city, limit = 20, offset = 0 } = query;
 
     const where = {
-      ...(search?.trim() ? { name: { contains: search.trim(), mode: 'insensitive' as const } } : {}),
+      ...(name?.trim() ? { name: { contains: name.trim(), mode: 'insensitive' as const } } : {}),
       ...(city?.trim() ? { city: { equals: city.trim(), mode: 'insensitive' as const } } : {}),
     };
 
@@ -57,6 +57,27 @@ export class TeamsService {
         orderBy: { created_at: 'desc' },
         skip: offset,
         take: limit,
+
+        include: {
+          team_members: {
+            where: { status: MembershipStatus.approved },
+            omit: {
+              user_id: true,
+              joined_at: true,
+              role: true,
+              status: true,
+            },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  avatar_url: true,
+                },
+              },
+            },
+          },
+        },
       }),
       this.prisma.team.count({ where }),
     ]);

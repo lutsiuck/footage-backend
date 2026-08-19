@@ -1,5 +1,5 @@
 export type TeamsQuery = {
-  search?: string;
+  name?: string;
   city?: string;
   limit?: number;
   offset?: number;

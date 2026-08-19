@@ -31,12 +31,12 @@ export class TeamsController {
 
   @Get()
   getTeams(
-    @Query('search') search?: string,
+    @Query('nameTeam') name?: string,
     @Query('city') city?: string,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit?: number,
     @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset?: number,
   ) {
-    return this.teamsService.getTeams({ search, city, limit, offset });
+    return this.teamsService.getTeams({ name, city, limit, offset });
   }
 
   @Get(':id')
