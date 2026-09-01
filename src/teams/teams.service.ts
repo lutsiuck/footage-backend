@@ -82,7 +82,18 @@ export class TeamsService {
       this.prisma.team.count({ where }),
     ]);
 
-    return { items, total, limit, offset };
+    const teams = items.map((item) => ({
+      ...item,
+      team_members: item.team_members.map((member) => ({
+        user_id: member.user.id,
+        name: member.user.name,
+        avatar_url: member.user.avatar_url,
+        id: member.id,
+        team_id: member.team_id,
+      })),
+    }));
+
+    return { items: teams, total, limit, offset };
   }
 
   async getTeamDetails(teamId: string) {
@@ -90,7 +101,7 @@ export class TeamsService {
       where: { id: teamId },
       include: {
         team_members: {
-          where: { status: MembershipStatus.approved },
+          // where: { status: MembershipStatus.approved },
           include: {
             user: {
               select: {
@@ -115,11 +126,12 @@ export class TeamsService {
       logo_url: team.logo_url,
       created_by: team.created_by,
       created_at: team.created_at,
-      members: team.team_members.map((member) => ({
+      team_members: team.team_members.map((member) => ({
         user_id: member.user.id,
         name: member.user.name,
-        avatar: member.user.avatar_url,
+        avatar_url: member.user.avatar_url,
         role: member.role,
+        status: member.status,
       })),
     };
   }
@@ -145,7 +157,7 @@ export class TeamsService {
         team_id: teamId,
         user_id: userId,
         role: TeamMemberRole.player,
-        status: MembershipStatus.pending,
+        status: MembershipStatus.requested,
       },
     });
 
@@ -178,7 +190,7 @@ export class TeamsService {
         team_id: teamId,
         user_id: userId,
         role: TeamMemberRole.player,
-        status: MembershipStatus.pending,
+        status: MembershipStatus.invited,
       },
     });
 
@@ -345,6 +357,29 @@ export class TeamsService {
         status: MembershipStatus.approved,
       },
     });
+  }
+
+  async searchPlayers(teamId: string, name?: string) {
+    await this.ensureTeamExists(teamId);
+
+    const players = await this.prisma.user.findMany({
+      where: {
+        name: { contains: name?.trim(), mode: 'insensitive' as const },
+        team_members: {
+          none: {
+            team_id: teamId,
+          },
+        },
+      },
+
+      select: {
+        id: true,
+        name: true,
+        avatar_url: true,
+      },
+    });
+
+    return players;
   }
 
   private async ensureTeamExists(teamId: string) {

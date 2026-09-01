@@ -56,7 +56,9 @@ export class TournamentsService {
     const teams = await this.prisma.tournamentTeam.findMany({
       where: {
         tournament_id: tournamentId,
-        status: isOrganizer ? { in: [MembershipStatus.approved, MembershipStatus.pending] } : MembershipStatus.approved,
+        status: isOrganizer
+          ? { in: [MembershipStatus.approved, MembershipStatus.invited, MembershipStatus.requested] }
+          : MembershipStatus.approved,
       },
       include: { team: { select: { id: true, name: true, logo_url: true } } },
     });
@@ -75,7 +77,7 @@ export class TournamentsService {
     await this.ensureTeamNotInTournament(tournamentId, teamId);
 
     const tournamentTeam = await this.prisma.tournamentTeam.create({
-      data: { tournament_id: tournamentId, team_id: teamId, status: MembershipStatus.pending },
+      data: { tournament_id: tournamentId, team_id: teamId, status: MembershipStatus.requested },
     });
     return { success: true, tournament_team: tournamentTeam };
   }
@@ -88,7 +90,7 @@ export class TournamentsService {
     await this.ensureTeamNotInTournament(tournamentId, teamId);
 
     const tournamentTeam = await this.prisma.tournamentTeam.create({
-      data: { tournament_id: tournamentId, team_id: teamId, status: MembershipStatus.pending },
+      data: { tournament_id: tournamentId, team_id: teamId, status: MembershipStatus.invited },
     });
     return { success: true, tournament_team: tournamentTeam };
   }

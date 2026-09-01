@@ -91,4 +91,10 @@ export class TeamsController {
   transferCaptain(@Param('teamId', ParseUUIDPipe) teamId: string, @Body() dto: TransferCaptainDto, @Req() req: AuthorizedRequest) {
     return this.teamsService.transferCaptain(teamId, req.user.id, dto.new_captain_id);
   }
+
+  @Get(':teamId/search-players')
+  @Authorization()
+  searchPlayer(@Param('teamId', ParseUUIDPipe) teamId: string, @Query('name') name?: string) {
+    return this.teamsService.searchPlayers(teamId, name);
+  }
 }

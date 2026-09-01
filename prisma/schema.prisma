@@ -12,7 +12,8 @@ enum TeamMemberRole {
 }
 
 enum MembershipStatus {
-  pending
+  invited
+  requested
   approved
 }
 
