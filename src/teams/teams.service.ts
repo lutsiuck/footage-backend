@@ -3,12 +3,14 @@ import { MembershipStatus, TeamMemberRole } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateTeamDto } from './dtos/create-team.dto';
 import type { TeamsQuery } from './types/teams-query.type';
+import { buildUploadedImagePath, deleteUploadedImage } from 'src/common/config/image-upload.config';
+import { UpdateTeamDto } from './dtos/update-team.dto';
 
 @Injectable()
 export class TeamsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async createTeam(userId: string, dto: CreateTeamDto) {
+  async createTeam(userId: string, dto: CreateTeamDto, logo: Express.Multer.File) {
     const existingTeam = await this.prisma.team.findFirst({
       where: { name: { equals: dto.name.trim(), mode: 'insensitive' } },
       select: { id: true },
@@ -23,7 +25,7 @@ export class TeamsService {
         data: {
           name: dto.name.trim(),
           city: dto.city?.trim(),
-          logo_url: dto.logo_url,
+          logo_url: logo ? buildUploadedImagePath('teams', logo.filename) : null,
           created_by: userId,
         },
       });
@@ -41,6 +43,50 @@ export class TeamsService {
     });
 
     return team;
+  }
+
+  async updateTeam(teamId: string, userId: string, dto: UpdateTeamDto, logo?: Express.Multer.File) {
+    const [team, captain] = await Promise.all([
+      this.prisma.team.findUnique({ where: { id: teamId }, select: { id: true, logo_url: true } }),
+      this.isCaptain(userId, teamId),
+    ]);
+
+    if (!team) {
+      throw new NotFoundException('Team not found');
+    }
+
+    if (!captain) {
+      throw new ForbiddenException('Only captain can update team');
+    }
+
+    const trimmedName = dto.name?.trim();
+    if (trimmedName) {
+      const existingTeam = await this.prisma.team.findFirst({
+        where: { id: { not: teamId }, name: { equals: trimmedName, mode: 'insensitive' } },
+        select: { id: true },
+      });
+      if (existingTeam) {
+        throw new ConflictException('Team with this name already exists');
+      }
+    }
+
+    const nextLogoUrl = logo ? buildUploadedImagePath('teams', logo.filename) : null;
+    const previousLogoUrl = team.logo_url;
+
+    const updatedTeam = await this.prisma.team.update({
+      where: { id: teamId },
+      data: {
+        name: trimmedName,
+        city: dto.city?.trim(),
+        ...(nextLogoUrl ? { logo_url: nextLogoUrl } : {}),
+      },
+    });
+
+    if (nextLogoUrl && previousLogoUrl && previousLogoUrl !== nextLogoUrl) {
+      await deleteUploadedImage(previousLogoUrl);
+    }
+
+    return updatedTeam;
   }
 
   async getTeams(query: TeamsQuery) {
@@ -332,6 +378,60 @@ export class TeamsService {
       });
     });
 
+    return { success: true };
+  }
+
+  async getInvitations(teamId: string) {
+    await this.ensureTeamExists(teamId);
+
+    const invitations = await this.prisma.tournamentTeam.findMany({
+      where: {
+        team_id: teamId,
+        status: MembershipStatus.invited,
+      },
+      omit: {
+        tournament_id: true,
+        status: true,
+      },
+      include: {
+        tournament: true,
+      },
+    });
+
+    return invitations;
+  }
+
+  async approveInvitation(tournamentId: string, userId: string, teamId: string) {
+    await this.ensureTeamExists(teamId);
+
+    const captain = await this.isCaptain(userId, teamId);
+    if (!captain) {
+      throw new ForbiddenException('Only captain can approve to team');
+    }
+
+    const item = await this.prisma.tournamentTeam.findUnique({
+      where: { tournament_id_team_id: { tournament_id: tournamentId, team_id: teamId } },
+    });
+    if (!item) throw new NotFoundException('Team application not found');
+
+    const updated = await this.prisma.tournamentTeam.update({ where: { id: item.id }, data: { status: MembershipStatus.approved } });
+    return { success: true, tournament_team: updated };
+  }
+
+  async rejectInvitation(tournamentId: string, userId: string, teamId: string) {
+    await this.ensureTeamExists(teamId);
+
+    const captain = await this.isCaptain(userId, teamId);
+    if (!captain) {
+      throw new ForbiddenException('Only captain can reject team');
+    }
+
+    const item = await this.prisma.tournamentTeam.findUnique({
+      where: { tournament_id_team_id: { tournament_id: tournamentId, team_id: teamId } },
+    });
+    if (!item) throw new NotFoundException('Team application not found');
+
+    await this.prisma.tournamentTeam.delete({ where: { id: item.id } });
     return { success: true };
   }
 
