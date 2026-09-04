@@ -45,6 +45,7 @@ export class TeamsController {
           }),
           new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 5, message: 'Logo size must be less than 5MB' }), //5MB
         ],
+        fileIsRequired: false,
       }),
     )
     logo: Express.Multer.File,

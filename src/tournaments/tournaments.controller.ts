@@ -4,14 +4,19 @@ import {
   Controller,
   DefaultValuePipe,
   Delete,
+  FileTypeValidator,
   Get,
+  MaxFileSizeValidator,
   Param,
+  ParseFilePipe,
   ParseIntPipe,
   ParseUUIDPipe,
   Patch,
   Post,
   Query,
   Req,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
 import { TournamentStatus, TournamentType } from '@prisma/client';
 import { Authorization } from 'src/common/decorators/authorization.decorator';
@@ -19,6 +24,9 @@ import { TournamentsService } from './tournaments.service';
 import { CreateTournamentDto } from './dtos/create-tournament.dto';
 import { TeamActionDto } from './dtos/team-action.dto';
 import type { AuthorizedRequest } from 'src/common/types/authorized-request.type';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { imageUploadConfig } from 'src/common/config/image-upload.config';
+import { UpdateTournamentDto } from './dtos/update-tournament.dto';
 
 @Controller('tournaments')
 export class TournamentsController {
@@ -26,8 +34,49 @@ export class TournamentsController {
 
   @Post()
   @Authorization()
-  createTournament(@Body() dto: CreateTournamentDto, @Req() req: AuthorizedRequest) {
-    return this.tournamentsService.createTournament(req.user!.id, dto);
+  @UseInterceptors(FileInterceptor('photo', imageUploadConfig('tournaments')))
+  createTournament(
+    @Body() dto: CreateTournamentDto,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new FileTypeValidator({
+            fileType: /^image\/(jpeg|png|webp)$/,
+            skipMagicNumbersValidation: true,
+          }),
+          new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 5, message: 'Logo size must be less than 5MB' }), //5MB
+        ],
+        fileIsRequired: false,
+      }),
+    )
+    photo: Express.Multer.File,
+    @Req() req: AuthorizedRequest,
+  ) {
+    return this.tournamentsService.createTournament(req.user!.id, dto, photo);
+  }
+
+  @Patch(':id')
+  @Authorization()
+  @UseInterceptors(FileInterceptor('photo', imageUploadConfig('tournaments')))
+  updateTournament(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateTournamentDto,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new FileTypeValidator({
+            fileType: /^image\/(jpeg|png|webp)$/,
+            skipMagicNumbersValidation: true,
+          }),
+          new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 5, message: 'Logo size must be less than 5MB' }), //5MB
+        ],
+        fileIsRequired: false,
+      }),
+    )
+    photo: Express.Multer.File,
+    @Req() req: AuthorizedRequest,
+  ) {
+    return this.tournamentsService.updateTournament(req.user!.id, id, dto, photo);
   }
 
   @Get()

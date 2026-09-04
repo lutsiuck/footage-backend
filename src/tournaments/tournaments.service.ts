@@ -3,18 +3,19 @@ import { MembershipStatus, TeamMemberRole, TournamentStatus } from '@prisma/clie
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateTournamentDto } from './dtos/create-tournament.dto';
 import type { TournamentsQuery } from './types/tournaments-query.type';
+import { UpdateTournamentDto } from './dtos/update-tournament.dto';
+import { buildUploadedImagePath, deleteUploadedImage } from 'src/common/config/image-upload.config';
 
 @Injectable()
 export class TournamentsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async createTournament(userId: string, dto: CreateTournamentDto) {
+  async createTournament(userId: string, dto: CreateTournamentDto, photo?: Express.Multer.File) {
     if (!dto.name?.trim()) throw new BadRequestException('Tournament name is required');
     const startDate = dto.start_date ? new Date(dto.start_date) : undefined;
     const endDate = dto.end_date ? new Date(dto.end_date) : undefined;
-    if (startDate && Number.isNaN(startDate.getTime())) throw new BadRequestException('start_date must be a valid date');
-    if (endDate && Number.isNaN(endDate.getTime())) throw new BadRequestException('end_date must be a valid date');
-    if (startDate && endDate && endDate < startDate) throw new BadRequestException('end_date must be >= start_date');
+
+    this.checkValidDates(startDate, endDate);
 
     return this.prisma.$transaction(async (tx) => {
       const tournament = await tx.tournament.create({
@@ -22,6 +23,7 @@ export class TournamentsService {
           name: dto.name.trim(),
           type: dto.type,
           city: dto.city?.trim(),
+          photo_url: photo ? buildUploadedImagePath('tournaments', photo.filename) : null,
           start_date: startDate,
           end_date: endDate,
           created_by: userId,
@@ -31,6 +33,38 @@ export class TournamentsService {
       await tx.user.updateMany({ where: { id: userId, is_organizer: false }, data: { is_organizer: true } });
       return tournament;
     });
+  }
+
+  async updateTournament(userId: string, tournamentId: string, dto: UpdateTournamentDto, photo?: Express.Multer.File) {
+    const tournament = await this.ensureTournamentExists(tournamentId);
+
+    if (!(await this.isTournamentOrganizer(userId, tournamentId))) {
+      throw new ForbiddenException('Only tournament organizer can update');
+    }
+
+    const startDate = dto.start_date ? new Date(dto.start_date) : undefined;
+    const endDate = dto.end_date ? new Date(dto.end_date) : undefined;
+    this.checkValidDates(startDate, endDate);
+
+    const nextPhotoUrl = photo ? buildUploadedImagePath('tournaments', photo.filename) : null;
+    const previousPhotoUrl = tournament.photo_url;
+
+    const updatedTournament = await this.prisma.tournament.update({
+      where: { id: tournamentId },
+      data: {
+        name: dto?.name?.trim(),
+        city: dto.city?.trim(),
+        start_date: dto.start_date ? new Date(dto.start_date) : undefined,
+        end_date: dto.end_date ? new Date(dto.end_date) : undefined,
+        photo_url: nextPhotoUrl,
+      },
+    });
+
+    if (nextPhotoUrl && previousPhotoUrl && previousPhotoUrl !== nextPhotoUrl) {
+      await deleteUploadedImage(previousPhotoUrl);
+    }
+
+    return updatedTournament;
   }
 
   async getTournaments(query: TournamentsQuery) {
@@ -49,8 +83,7 @@ export class TournamentsService {
   }
 
   async getTournamentDetails(tournamentId: string, userId?: string) {
-    const tournament = await this.prisma.tournament.findUnique({ where: { id: tournamentId } });
-    if (!tournament) throw new NotFoundException('Tournament not found');
+    const tournament = await this.ensureTournamentExists(tournamentId);
     const isOrganizer = userId ? await this.isTournamentOrganizer(userId, tournamentId) : false;
 
     const teams = await this.prisma.tournamentTeam.findMany({
@@ -180,7 +213,10 @@ export class TournamentsService {
   }
 
   private async ensureTournamentExists(tournamentId: string) {
-    const tournament = await this.prisma.tournament.findUnique({ where: { id: tournamentId }, select: { id: true, status: true } });
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { id: tournamentId },
+      select: { id: true, status: true, photo_url: true },
+    });
     if (!tournament) throw new NotFoundException('Tournament not found');
     return tournament;
   }
@@ -196,5 +232,11 @@ export class TournamentsService {
       select: { id: true },
     });
     if (entry) throw new ConflictException('Team is already in tournament');
+  }
+
+  private checkValidDates(startDate: Date | undefined, endDate: Date | undefined) {
+    if (startDate && Number.isNaN(startDate.getTime())) throw new BadRequestException('start_date must be a valid date');
+    if (endDate && Number.isNaN(endDate.getTime())) throw new BadRequestException('end_date must be a valid date');
+    if (startDate && endDate && endDate < startDate) throw new BadRequestException('end_date must be >= start_date');
   }
 }

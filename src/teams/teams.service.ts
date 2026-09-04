@@ -10,7 +10,7 @@ import { UpdateTeamDto } from './dtos/update-team.dto';
 export class TeamsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async createTeam(userId: string, dto: CreateTeamDto, logo: Express.Multer.File) {
+  async createTeam(userId: string, dto: CreateTeamDto, logo?: Express.Multer.File) {
     const existingTeam = await this.prisma.team.findFirst({
       where: { name: { equals: dto.name.trim(), mode: 'insensitive' } },
       select: { id: true },
